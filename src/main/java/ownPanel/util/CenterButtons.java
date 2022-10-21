@@ -33,6 +33,7 @@ public class CenterButtons extends JPanel implements ActionListener {
     private JButton refreshTree;
     private SecondPanel secondPanel;
     private JComboBox status;
+    private JComboBox exportType;
     private DefaultTableModel model;
     private JComboBox dataType;
     private JButton exportDataToExcel;
@@ -50,6 +51,15 @@ public class CenterButtons extends JPanel implements ActionListener {
         randomMap.put(10f,100f);
     }
 
+    private static Map<Integer,String> exportMap = new HashMap<>();
+    static {
+        exportMap.put(0,"导出容量倍率Excel");
+        exportMap.put(1,"导出循环伏安Excel");
+        exportMap.put(2,"导出循环保持率Excel");
+        exportMap.put(3,"导出总结所用的Excel");
+        exportMap.put(4,"导出所有cap数据Excel");
+    }
+
     public CenterButtons(StringBuilder data,SecondPanel frame){
         super();
         calculate = new JButton("计算");
@@ -59,6 +69,14 @@ public class CenterButtons extends JPanel implements ActionListener {
         inputFilename.setText(defaultText);
         setEMin.setText("若需手动设置截止电位，点此输入");
         refreshTree = new JButton("刷新目录树");
+        exportType = new JComboBox<String>();
+
+        exportType.addItem(exportMap.get(4));
+        exportType.addItem(exportMap.get(0));
+        exportType.addItem(exportMap.get(1));
+        exportType.addItem(exportMap.get(2));
+        exportType.addItem(exportMap.get(3));
+
         exportDataToExcel = new JButton("导出数据到Excel表格");
         status = new JComboBox<String>();
         status.addItem("请选择命名方法，默认采用文件标题命名");
@@ -80,8 +98,9 @@ public class CenterButtons extends JPanel implements ActionListener {
         status.addActionListener(this);
         dataType.addActionListener(this);
         exportDataToExcel.addActionListener(this);
+        exportType.addActionListener(this);
 
-        this.setLayout(new GridLayout(10,1,10,10));
+        this.setLayout(new GridLayout(20,1,10,10));
         this.add(new JLabel("请选择计算数据类型，默认容量"));
         this.add(dataType);
         this.add(calculate);
@@ -90,6 +109,7 @@ public class CenterButtons extends JPanel implements ActionListener {
         this.add(setEMin);
         this.add(removeTable);
         this.add(refreshTree);
+        this.add(exportType);
         this.add(exportDataToExcel);
     }
 
@@ -117,10 +137,16 @@ public class CenterButtons extends JPanel implements ActionListener {
 
     public void exportTable() throws IOException {
         String fileName = "";
-        if ("Cap".equals(dataType.getSelectedItem())){
-            fileName = "cap.xls";
-        }else if ("CV".equals(dataType.getSelectedItem())) {
-            fileName = "cv.xls";
+        if (exportType.getSelectedItem().equals(exportMap.get(0))) {
+            fileName = "容量倍率.xls";
+        }else if (exportType.getSelectedItem().equals(exportMap.get(1))) {
+            fileName = "循环伏安.xls";
+        }else if (exportType.getSelectedItem().equals(exportMap.get(2))) {
+            fileName = "循环保持率.xls";
+        }else if (exportType.getSelectedItem().equals(exportMap.get(3))) {
+            fileName = "总结.xls";
+        }else if (exportType.getSelectedItem().equals(exportMap.get(4))) {
+            fileName = "所有cap数据.xls";
         }
         String absolutePath = path + fileName;
         //判断fileName文件是否存在，若存在，删除文件
@@ -133,15 +159,109 @@ public class CenterButtons extends JPanel implements ActionListener {
         try {
             WritableWorkbook workbook = Workbook.createWorkbook(file);
             WritableSheet sheet = workbook.createSheet("sheet1",0);
-            for (int i = 0; i < model.getColumnCount(); i++) {
-                sheet.addCell(new jxl.write.Label(i,0,model.getColumnName(i)));
-            }
-            for (int i = 0; i < model.getRowCount(); i++) {
-                for (int j = 0; j < model.getColumnCount(); j++) {
-                    if (model.getValueAt(i,j) != null){
-                        sheet.addCell(new jxl.write.Label(j,i+1,model.getValueAt(i,j).toString()));
+            int index = 0;
+            switch (fileName){
+                case "总结.xls":
+                    for (int i = 0; i < model.getColumnCount(); i++) {
+                        if (model.getColumnName(i).toLowerCase().contains(
+                                "cls") && !model.getColumnName(i).toLowerCase().contains("pre") && !model.getColumnName(i).toLowerCase().contains("aft")) {
+                            sheet.addCell(new jxl.write.Label(index,0,model.getColumnName(i)));
+                            sheet.addCell(new jxl.write.Label(index,1,
+                                    model.getValueAt(0,i+3).toString()));
+                            index++;
+                        }else if (model.getColumnName(i).toLowerCase().contains("cd")){
+                            sheet.addCell(new jxl.write.Label(index,0,
+                                    model.getColumnName(i)));
+                            if (model.getValueAt(5,i+1) != null) {
+                                sheet.addCell(new jxl.write.Label(index, 1,
+                                        "发生极化"));
+                            }else {
+                                sheet.addCell(new jxl.write.Label(index, 1,
+                                        model.getValueAt(2,i+1).toString()));
+                            }
+                            index++;
+                        }
                     }
-                }
+                    break;
+                case "容量倍率.xls":
+                    for (int i = 0; i < model.getColumnCount(); i++) {
+                        if (model.getColumnName(i).toLowerCase().contains(
+                                "cd") && !model.getColumnName(i).toLowerCase().contains("cls")){
+                            sheet.addCell(new jxl.write.Label(0,index,
+                                    index+1+""));
+                            sheet.addCell(new jxl.write.Label(1,index,
+                                    model.getValueAt(0,i+1).toString()));
+
+                            sheet.addCell(new jxl.write.Label(0,index+1,
+                                    index+2+""));
+                            sheet.addCell(new jxl.write.Label(1,index+1,
+                                    model.getValueAt(1,i+1).toString()));
+
+                            sheet.addCell(new jxl.write.Label(0,index+2,
+                                    index+3+""));
+                            sheet.addCell(new jxl.write.Label(1,index+2,
+                                    model.getValueAt(2,i+1).toString()));
+
+                            sheet.addCell(new jxl.write.Label(0,index+3,
+                                    index+4+""));
+                            sheet.addCell(new jxl.write.Label(1,index+3,
+                                    model.getValueAt(3,i+1).toString()));
+
+                            sheet.addCell(new jxl.write.Label(0,index+4,
+                                    index+5+""));
+                            sheet.addCell(new jxl.write.Label(1,index+4,
+                                    model.getValueAt(4,i+1).toString()));
+                            index += 5;
+                        }
+                    }
+                    break;
+                case "循环保持率.xls":
+                    for (int i = 0; i < model.getColumnCount(); i++) {
+                        if (model.getColumnName(i).toLowerCase().contains(
+                                "cls") && !model.getColumnName(i).toLowerCase().contains("pre")
+                                && !model.getColumnName(i).toLowerCase().contains("aft")){
+                            do {
+                                sheet.addCell(new jxl.write.Label(0, index,
+                                        model.getValueAt(index, i).toString()));
+                                sheet.addCell(new jxl.write.Label(1, index,
+                                        model.getValueAt(index, i + 1).toString()));
+                                sheet.addCell(new jxl.write.Label(2, index,
+                                        model.getValueAt(index, i + 2).toString()));
+                                index++;
+                            } while (index < model.getRowCount());
+                        }
+                    }
+                    break;
+                case "所有cap数据.xls":
+                    for (int i = 0; i < model.getColumnCount(); i++) {
+                        sheet.addCell(new jxl.write.Label(i,0,
+                                model.getColumnName(i)));
+                    }
+                    for (int i = 0; i < model.getRowCount(); i++) {
+                        for (int j = 0; j < model.getColumnCount(); j++) {
+                            if (model.getValueAt(i,j) != null){
+                                sheet.addCell(new jxl.write.Label(j,i+1,
+                                        model.getValueAt(i,j).toString()));
+                            }
+                        }
+                    }
+                    break;
+                case "循环伏安.xls":
+                    for (int i = 0; i < model.getColumnCount(); i++) {
+                        sheet.addCell(new jxl.write.Label(i,0,
+                                model.getColumnName(i)));
+                    }
+                    for (int i = 0; i < model.getRowCount(); i++) {
+                        for (int j = 0; j < model.getColumnCount(); j++) {
+                            if (model.getValueAt(i,j) != null){
+                                sheet.addCell(new jxl.write.Label(j,i+1,
+                                        model.getValueAt(i,j).toString()));
+                            }
+                        }
+                    }
+                    break;
+                default:
+                    break;
             }
             workbook.write();
             workbook.close();
@@ -634,13 +754,13 @@ public class CenterButtons extends JPanel implements ActionListener {
             clList.add(new DecimalFormat("##0.00").format((end - start) / start * 100));
         }
         if (overPotential && "".equals(setMin)){
-            Float k = dataType;
-            Float sta = randomMap.get(k);
+            String dialog = JOptionPane.showInputDialog(dataType+"mA/g的电流密度发生极化了，请手动输入你要生成的随机数");
+            float parseFloat = Float.parseFloat(dialog);
             list.clear();
             clList.clear();
             for (int i = 0; i < 5; i++) {
                 int r = new Random().nextInt(50) - 25;
-                float v = sta + r / 100f;
+                float v = parseFloat + r / 100f;
                 float cl = 100 + r / 100f;
                 list.add(Float.toString(v));
                 clList.add(Float.toString(cl));

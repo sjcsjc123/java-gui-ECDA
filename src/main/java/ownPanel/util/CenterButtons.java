@@ -39,6 +39,8 @@ public class CenterButtons extends JPanel implements ActionListener {
     private JButton exportDataToExcel;
     public static List<CapOutPut> Caps = new ArrayList<>();
     public static List<CVOutPut> CvList = new ArrayList<>();
+    private static List<Gitt> GittList = new ArrayList<>();
+    private static List<GittToString> GittToStringList = new ArrayList<>();
     private final String defaultText = "若需要重命名或者添加前缀名，点此输入";
     private static Map<Float,Float> randomMap = new HashMap<>();
     static {
@@ -50,7 +52,6 @@ public class CenterButtons extends JPanel implements ActionListener {
         randomMap.put(5f,120f);
         randomMap.put(10f,100f);
     }
-
     private static Map<Integer,String> exportMap = new HashMap<>();
     static {
         exportMap.put(0,"导出容量倍率Excel");
@@ -282,6 +283,9 @@ public class CenterButtons extends JPanel implements ActionListener {
     private void calculate() throws IOException {
         String  dataType = (String) this.dataType.getSelectedItem();
         String type = dataType.toLowerCase();
+        Caps = new ArrayList<>();
+        CvList = new ArrayList<>();
+        GittList = new ArrayList<>();
         if (String.valueOf(path).endsWith("\\")) {
             //是文件夹
             if (status.getSelectedItem() == "重命名"){
@@ -293,6 +297,7 @@ public class CenterButtons extends JPanel implements ActionListener {
             File[] files = Objects.requireNonNull(file.listFiles());
             List<FileByType> capList = new ArrayList<>();
             List<FileByType> cvList = new ArrayList<>();
+            List<FileByType> gittList = new ArrayList<>();
             for (File value : files) {
                 //筛选所需要计算的文件
                 if (value.getName().endsWith("idx") || value.getName().endsWith("xls") || value.getName().endsWith("xlsx")) {
@@ -312,12 +317,36 @@ public class CenterButtons extends JPanel implements ActionListener {
                 if (!fileNameAndType.getFileType().toLowerCase().contains(type)){
                     continue;
                 }
+                //将文件更名
+                String newFilename = "";
+                if (status.getSelectedItem() == "请选择命名方法，默认采用文件标题命名"){
+                    newFilename = fileNameAndType.getFileName();
+                }else if (status.getSelectedItem() == "重命名"){
+                    if (inputFilename.getText().equals(defaultText)){
+                        JOptionPane.showMessageDialog(inputFilename,
+                                "请重新输入文件名！！！");
+                    }
+                    newFilename = inputFilename.getText();
+                }else if (status.getSelectedItem() == "添加前缀名,后面则使用文件标题"){
+                    if (inputFilename.getText().equals(defaultText)){
+                        JOptionPane.showMessageDialog(inputFilename,
+                                "请重新输入文件名！！！或者联系SJC");
+                        return;
+                    }
+                    newFilename = inputFilename.getText()+fileNameAndType.getFileName();
+                }
+                String old = path + value.getName();
+                RenameStatus renameFlag = rename(old,
+                        newFilename);
+                if (!renameFlag.isFlag()){
+                    JOptionPane.showMessageDialog(calculate,"更名失败，请联系SJC");
+                    return;
+                }
                 //先筛选出符合条件的
                 if (value.getName().endsWith("ids") || value.getName().endsWith("idf")) {
                     if ("cap".equals(type)){
-                        String name = value.getName();
                         //读取name中连续的数字
-                        char[] chars = name.toCharArray();
+                        char[] chars = newFilename.toCharArray();
                         StringBuilder calType = new StringBuilder();
                         boolean start = false;
                         for (int i =0; i < chars.length; i++) {
@@ -338,11 +367,11 @@ public class CenterButtons extends JPanel implements ActionListener {
                                 }
                             }
                         }
-                        capList.add(new FileByType(value, name,Float.valueOf(calType.toString())));
+                        capList.add(new FileByType(new File(renameFlag.getNewFileName()), newFilename,
+                                Float.valueOf(calType.toString())));
                     }else if ("cv".equals(type)){
-                        String name = value.getName();
                         //读取name中连续的数字
-                        char[] chars = name.toCharArray();
+                        char[] chars = newFilename.toCharArray();
                         StringBuilder calType = new StringBuilder();
                         boolean start = false;
                         for (int i = 0; i < chars.length; i++) {
@@ -359,9 +388,9 @@ public class CenterButtons extends JPanel implements ActionListener {
                                 }
                             }
                         }
-                        cvList.add(new FileByType(value, name,Float.valueOf(calType.toString())));
+                        cvList.add(new FileByType(new File(renameFlag.getNewFileName()), newFilename,Float.valueOf(calType.toString())));
                     }else if ("gitt".equals(type)){
-
+                        gittList.add(new FileByType(new File(renameFlag.getNewFileName()), newFilename,0f));
                     }
                 }
             }
@@ -466,9 +495,11 @@ public class CenterButtons extends JPanel implements ActionListener {
                 list.addAll(clsPreList);
                 list.addAll(clsList);
                 list.addAll(clsAftList);
-            }else {
+            }else if ("cv".equals(type)){
                 list.addAll(cvOutList);
                 list.addAll(cvClsList);
+            }else {
+                list.addAll(gittList);
             }
             for (int i = 0; i < list.size(); i++) {
                 boolean dfsOK = false;
@@ -483,22 +514,52 @@ public class CenterButtons extends JPanel implements ActionListener {
                             fileNotFoundException.toString());
                 }
             }
-            Caps = new ArrayList<>();
-            CvList = new ArrayList<>();
             secondPanel.getTable().setModel(model);
             secondPanel.getTable().setTableModel(model);
         } else {
             //是文件
             model = new DefaultTableModel();
+            FileReader reader = new FileReader(String.valueOf(path));
+            BufferedReader bufferedReader = new BufferedReader(reader);
+            StringBuilder data = new StringBuilder();
+            String s = "";
+            while ((s = bufferedReader.readLine()) != null){
+                data.append(s).append("\r\n");
+            }
+            bufferedReader.close();
+            FileNameAndType fileNameAndType =
+                    getTitleAndType(data.toString());
+            String newFilename = "";
+            if (status.getSelectedItem() == "请选择命名方法，默认采用文件标题命名"){
+                newFilename = fileNameAndType.getFileName();
+            }else if (status.getSelectedItem() == "重命名"){
+                if (inputFilename.getText().equals(defaultText)){
+                    JOptionPane.showMessageDialog(inputFilename,
+                            "请重新输入文件名！！！");
+                }
+                newFilename = inputFilename.getText();
+            }else if (status.getSelectedItem() == "添加前缀名,后面则使用文件标题"){
+                if (inputFilename.getText().equals(defaultText)){
+                    JOptionPane.showMessageDialog(inputFilename,
+                            "请重新输入文件名！！！或者联系SJC");
+                    return;
+                }
+                newFilename = inputFilename.getText()+fileNameAndType.getFileName();
+            }
+            String old = String.valueOf(path);
+            RenameStatus renameFlag = rename(old,
+                    newFilename);
+            if (!renameFlag.isFlag()){
+                JOptionPane.showMessageDialog(calculate,"更名失败，请联系SJC");
+                return;
+            }
             try {
-                solveFile(null, String.valueOf(path),true);
+                solveFile(null, renameFlag.getNewFileName(),true);
             } catch (Exception fileNotFoundException) {
                 JOptionPane.showMessageDialog(calculate,fileNotFoundException.getMessage());
             }
             secondPanel.getTable().setModel(model);
             secondPanel.getTable().setTableModel(model);
-            Caps = new ArrayList<>();
-            CvList = new ArrayList<>();
         }
     }
 
@@ -521,36 +582,7 @@ public class CenterButtons extends JPanel implements ActionListener {
         //1、获取文件标题，并顺带返回文件类型
         FileNameAndType fileNameAndType =
                 getTitleAndType(data.toString());
-        //2、将文件更名
-        String newFilename = "";
-        if (status.getSelectedItem() == "请选择命名方法，默认采用文件标题命名"){
-            newFilename = fileNameAndType.getFileName();
-        }else if (status.getSelectedItem() == "重命名"){
-            if (inputFilename.getText().equals(defaultText)){
-                JOptionPane.showMessageDialog(inputFilename,
-                        "请重新输入文件名！！！");
-            }
-            newFilename = inputFilename.getText();
-        }else if (status.getSelectedItem() == "添加前缀名,后面则使用文件标题"){
-            if (inputFilename.getText().equals(defaultText)){
-                JOptionPane.showMessageDialog(inputFilename,
-                        "请重新输入文件名！！！或者联系SJC");
-                return;
-            }
-            newFilename = inputFilename.getText()+fileNameAndType.getFileName();
-        }
-        String old = "";
-        if (String.valueOf(path).endsWith("\\")) {
-            old = path + fileByType.getFile().getName();
-        }else {
-            old = String.valueOf(path);
-        }
-        boolean renameFlag = rename(old,
-                newFilename);
-        if (!renameFlag){
-            JOptionPane.showMessageDialog(calculate,"更名失败，请联系SJC");
-            return;
-        }
+
         //3、计算
         switch (fileNameAndType.getFileType()){
             case "CV":
@@ -610,8 +642,63 @@ public class CenterButtons extends JPanel implements ActionListener {
                 break;
             case "EIS":
                 break;
+            case "GITT":
+                exportGitt(data.toString(),fileNameAndType.getFileName());
+                if (dfsOk){
+                    int size = GittList.size();
+                    Object[] times = new Object[size];
+                    Object[] is = new Object[size];
+                    Object[] es = new Object[size];
+                    for (int i = 0; i < GittList.size(); i++) {
+                        times[i] = GittList.get(i).getTime();
+                        is[i] = GittList.get(i).getI();
+                        es[i] = GittList.get(i).getE();
+                    }
+                    model.addColumn("时间",times);
+                    model.addColumn("电流",is);
+                    model.addColumn("电压",es);
+                }
+                break;
             default:
                 break;
+        }
+    }
+
+    private void exportGitt(String data, String fileName) {
+        String[] split = data.split("primary_data")[1].split("\r\n");
+        for (String line : split) {
+            if (line.length() == 38){
+                char[] chars = line.toCharArray();
+                StringBuilder first = new StringBuilder();
+                StringBuilder second = new StringBuilder();
+                StringBuilder third = new StringBuilder();
+                boolean firstFlag = false;
+                boolean secondFlag = false;
+                for (int i = 0; i < chars.length; i++) {
+                    if (chars[i] == ' '){
+                        if(i+1 < chars.length && chars[i+1] == ' '){
+                            continue;
+                        }
+                        if (firstFlag){
+                            secondFlag = true;
+                        }else {
+                            firstFlag = true;
+                        }
+                    }else {
+                        if (firstFlag && secondFlag){
+                            third.append(chars[i]);
+                        }else if (firstFlag){
+                            second.append(chars[i]);
+                        }else {
+                            first.append(chars[i]);
+                        }
+                    }
+                }
+                Gitt gitt = new Gitt(Double.parseDouble(String.valueOf(first)),
+                        Double.parseDouble(String.valueOf(second)),
+                        Double.parseDouble(String.valueOf(third)));
+                GittList.add(gitt);
+            }
         }
     }
 
@@ -660,8 +747,8 @@ public class CenterButtons extends JPanel implements ActionListener {
                         }
                     }
                 }
-                double cve = parseStrToDouble(String.valueOf(first));
-                double cvi = parseStrToDouble(String.valueOf(second));
+                double cve = Double.parseDouble(String.valueOf(first));
+                double cvi = Double.parseDouble(String.valueOf(second));
                 cvs.add(new CV(new DecimalFormat("##0.0000").format(cve),
                         new DecimalFormat("##0.0000").format(cvi)));
             }
@@ -720,24 +807,45 @@ public class CenterButtons extends JPanel implements ActionListener {
                 if (currentE.endsWith(" ")){
                     currentE = currentE.split(" ")[0];
                 }
-                if (parseStrToDouble(currentE)<Float.parseFloat(eMin)){
+                if (Double.parseDouble(currentE)<Float.parseFloat(eMin)){
                     endTime = step[j].substring(0,11);
                     break;
                 }
             }
-            String[] findEnd = s.split("\r\n");
-            String endE = findEnd[findEnd.length - 5];
-            String[] spl = endE.split("  ");
-            ArrayList<String> ends = new ArrayList<>();
-            for (String ele : spl) {
-                if (!ele.contains(" ")){
-                    ends.add(ele);
-                }else {
-                    for (String s1 : ele.split(" ")) {
-                        ends.add(s1);
+            String[] split = s.split("\r\n");
+            List<String[]> findEnd = new ArrayList<>();
+            for (String line : split) {
+                if (line.length() == 38){
+                    char[] chars = line.toCharArray();
+                    StringBuilder first = new StringBuilder();
+                    StringBuilder second = new StringBuilder();
+                    StringBuilder third = new StringBuilder();
+                    boolean firstFlag = false;
+                    boolean secondFlag = false;
+                    for (int j = 0; j < chars.length; j++) {
+                        if (chars[j] == ' '){
+                            if(j+1 < chars.length && chars[j+1] == ' '){
+                                continue;
+                            }
+                            if (firstFlag){
+                                secondFlag = true;
+                            }else {
+                                firstFlag = true;
+                            }
+                        }else {
+                            if (firstFlag && secondFlag){
+                                third.append(chars[j]);
+                            }else if (firstFlag){
+                                second.append(chars[j]);
+                            }else {
+                                first.append(chars[j]);
+                            }
+                        }
                     }
+                    findEnd.add(new String[]{String.valueOf(first),String.valueOf(second),String.valueOf(third)});
                 }
             }
+            String endE = findEnd.get(findEnd.size()-1)[1];
             float a = Float.parseFloat(startTime.substring(0, 7));
             int x = Integer.parseInt(startTime.substring(9, 11));
             double start = Math.pow(10, x) * a;
@@ -746,7 +854,7 @@ public class CenterButtons extends JPanel implements ActionListener {
             double end = Math.pow(10, y) * b;
             double res = (end - start) / 3.6 * dataType;
             list.add(new DecimalFormat("##0.00").format(res));
-            double endEV = parseStrToDouble(ends.get(1));
+            double endEV = Double.parseDouble(endE);
             float endMin = Float.parseFloat(eMin);
             if (Math.abs(endEV - endMin) > 0.02){
                 overPotential = true;
@@ -754,7 +862,7 @@ public class CenterButtons extends JPanel implements ActionListener {
             clList.add(new DecimalFormat("##0.00").format((end - start) / start * 100));
         }
         if (overPotential && "".equals(setMin)){
-            String dialog = JOptionPane.showInputDialog(dataType+"mA/g的电流密度发生极化了，请手动输入你要生成的随机数");
+            String dialog = JOptionPane.showInputDialog(dataType+"A/g的电流密度发生极化了，请手动输入你要生成的随机数");
             float parseFloat = Float.parseFloat(dialog);
             list.clear();
             clList.clear();
@@ -769,43 +877,25 @@ public class CenterButtons extends JPanel implements ActionListener {
             clList.add("可能发生极化");
         }
         while (list.size() <= 4) {
-            list.add(new DecimalFormat("##0.00").format((Float.parseFloat(list.get(list.size()-1)) + new Random().nextInt(50) - 25 / 100f)));
-            clList.add(new DecimalFormat("##0.00").format((Float.parseFloat(clList.get(clList.size()-1)) + new Random().nextInt(50) - 25 / 100f)));
+            list.add(new DecimalFormat("##0.00").format((Float.parseFloat(list.get(list.size()-1)) + (new Random().nextInt(50) - 25) / 100f)));
+            clList.add(new DecimalFormat("##0.00").format((Float.parseFloat(clList.get(clList.size()-1)) + (new Random().nextInt(50) - 25) / 100f)));
         }
         Caps.add(new CapOutPut(fileName,list,clList));
     }
 
-    private static double parseStrToDouble(String s) {
-        StringBuilder a = new StringBuilder();
-        StringBuilder x = new StringBuilder();
-        boolean aOk = false;
-        for (char c : s.toCharArray()) {
-            if (!aOk){
-                if (c != 'E'){
-                    a.append(c);
-                }else {
-                    aOk = true;
-                }
-            }else {
-                x.append(c);
-            }
-        }
-        int xI = Integer.parseInt(String.valueOf(x));
-        float aFloat = Float.parseFloat(String.valueOf(a));
-        return Math.pow(10,xI) * aFloat;
-    }
-
-    private static boolean rename(String old, String newFilename) {
+    private static RenameStatus rename(String old, String newFilename) {
         if (old.endsWith(".ids")){
             int lastIndexOf = old.lastIndexOf("\\");
-            return new File(old).renameTo(new File(old.substring(0,
-                    lastIndexOf) + "\\" + newFilename+".ids"));
+            return new RenameStatus(new File(old).renameTo(new File(old.substring(0,
+                    lastIndexOf) + "\\" + newFilename+".ids")),old.substring(0,
+                    lastIndexOf) + "\\" + newFilename+".ids");
         }else if (old.endsWith("idf")){
             int lastIndexOf = old.lastIndexOf("\\");
-            return new File(old).renameTo(new File(old.substring(0,
-                    lastIndexOf) + "\\" + newFilename+".idf"));
+            return new RenameStatus(new File(old).renameTo(new File(old.substring(0,
+                    lastIndexOf) + "\\" + newFilename+".idf")),old.substring(0,
+                    lastIndexOf) + "\\" + newFilename+".idf");
         }
-        return false;
+        return new RenameStatus(false,"");
     }
 
     private static FileNameAndType getTitleAndType(String data) {
@@ -814,10 +904,14 @@ public class CenterButtons extends JPanel implements ActionListener {
             String[] titles = data.split("Title=");
             for (int i = 1; i < titles.length; i++) {
                 if (!titles[i].substring(0,20).contains("Peripheral")){
-                    String filename = titles[i].split("E start")[0];
+                    String[] strings = titles[i].split("E start");
+                    if (strings.length == 1){
+                        return new FileNameAndType("GITT", "GITT");
+                    }
+                    String filename = strings[0];
                     filename = filename.replace(" ", "");
                     filename = filename.replace("\r\n","");
-                    return new FileNameAndType(filename,"EIS");
+                    return new FileNameAndType(filename, "EIS");
                 }
             }
         }

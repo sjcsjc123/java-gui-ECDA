@@ -17,6 +17,7 @@ import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.io.*;
+import java.sql.Time;
 import java.text.DecimalFormat;
 import java.util.*;
 import java.util.List;
@@ -59,7 +60,10 @@ public class CenterButtons extends JPanel implements ActionListener {
         exportMap.put(2,"导出循环保持率Excel");
         exportMap.put(3,"导出总结所用的Excel");
         exportMap.put(4,"导出所有cap数据Excel");
+        exportMap.put(5,"导出恒流充放电曲线数据");
     }
+    private static List<TimeAndCap> preList = new ArrayList<>();
+    private static List<TimeAndCap> aftList = new ArrayList<>();
 
     public CenterButtons(StringBuilder data,SecondPanel frame){
         super();
@@ -77,6 +81,7 @@ public class CenterButtons extends JPanel implements ActionListener {
         exportType.addItem(exportMap.get(1));
         exportType.addItem(exportMap.get(2));
         exportType.addItem(exportMap.get(3));
+        exportType.addItem(exportMap.get(5));
 
         exportDataToExcel = new JButton("导出数据到Excel表格");
         status = new JComboBox<String>();
@@ -148,6 +153,8 @@ public class CenterButtons extends JPanel implements ActionListener {
             fileName = "总结.xls";
         }else if (exportType.getSelectedItem().equals(exportMap.get(4))) {
             fileName = "所有cap数据.xls";
+        }else if (exportType.getSelectedItem().equals(exportMap.get(5))) {
+            fileName = "恒流充放电曲线.xls";
         }
         String absolutePath = path + fileName;
         //判断fileName文件是否存在，若存在，删除文件
@@ -261,6 +268,35 @@ public class CenterButtons extends JPanel implements ActionListener {
                         }
                     }
                     break;
+                case "恒流充放电曲线.xls":
+                    if (preList.size() == 0){
+                        JOptionPane.showMessageDialog(null,
+                                "选择恒流充放电曲线后，请重新点击计算按钮",
+                                "提示",
+                                JOptionPane.INFORMATION_MESSAGE);
+                        return;
+                    }else {
+                        sheet.addCell(new jxl.write.Label(0,0,
+                                "充电曲线"));
+                        for (TimeAndCap timeAndCap : preList) {
+                            sheet.addCell(new jxl.write.Label(2,index,
+                                    timeAndCap.getTime()));
+                            sheet.addCell(new jxl.write.Label(1,index,
+                                    timeAndCap.getCap()));
+                            index++;
+                        }
+                        index = 0;
+                        sheet.addCell(new jxl.write.Label(3,0,
+                                "放电曲线"));
+                        for (TimeAndCap timeAndCap : aftList) {
+                            sheet.addCell(new jxl.write.Label(5,index,
+                                    timeAndCap.getTime()));
+                            sheet.addCell(new jxl.write.Label(4,index,
+                                    timeAndCap.getCap()));
+                            index++;
+                        }
+                    }
+                    break;
                 default:
                     break;
             }
@@ -288,7 +324,7 @@ public class CenterButtons extends JPanel implements ActionListener {
         GittList = new ArrayList<>();
         if (String.valueOf(path).endsWith("\\")) {
             //是文件夹
-            if (status.getSelectedItem() == "重命名"){
+            if (status.getSelectedItem() == "重命名" || exportType.getSelectedItem() == exportMap.get(5)){
                 JOptionPane.showMessageDialog(calculate,"不支持，请更换");
                 return;
             }
@@ -381,7 +417,7 @@ public class CenterButtons extends JPanel implements ActionListener {
                                     start = true;
                                 }
                             }else {
-                                if (!(chars[i+1] >= '0' && chars[i+1] <= '9')){
+                                if (!(chars[i] >= '0' && chars[i] <= '9')){
                                     break;
                                 }else {
                                     calType.append(chars[i]);
@@ -549,12 +585,40 @@ public class CenterButtons extends JPanel implements ActionListener {
             String old = String.valueOf(path);
             RenameStatus renameFlag = rename(old,
                     newFilename);
+            StringBuilder calType = new StringBuilder();
+            if (fileNameAndType.getFileType().equals("Cap")){
+                //读取name中连续的数字
+                char[] chars = newFilename.toCharArray();
+                boolean start = false;
+                for (int i =0; i < chars.length; i++) {
+                    if (!start) {
+                        //判断字符是数字
+                        if (chars[i] == '-' && chars[i + 1] >= '0' && chars[i + 1] <= '9') {
+                            start = true;
+                        }
+                    } else {
+                        if (chars[i] == '-') {
+                            break;
+                        } else {
+                            if (chars[i] == '0') {
+                                calType.append("0.");
+                            } else {
+                                calType.append(chars[i]);
+                            }
+                        }
+                    }
+                }
+            }else {
+                calType.append("0.0");
+            }
             if (!renameFlag.isFlag()){
                 JOptionPane.showMessageDialog(calculate,"更名失败，请联系SJC");
                 return;
             }
             try {
-                solveFile(null, renameFlag.getNewFileName(),true);
+                solveFile(new FileByType(null,null,Float.parseFloat(calType.toString())),
+                        renameFlag.getNewFileName(),
+                        true);
             } catch (Exception fileNotFoundException) {
                 JOptionPane.showMessageDialog(calculate,fileNotFoundException.getMessage());
             }
@@ -565,7 +629,7 @@ public class CenterButtons extends JPanel implements ActionListener {
 
     private void solveFile(FileByType fileByType,String filename,boolean dfsOk) throws Exception {
         FileReader fileReader;
-        if (fileByType == null){
+        if (fileByType.getFileName() == null){
             fileReader = new FileReader(filename);
         }else {
             fileReader = new FileReader(fileByType.getFile());
@@ -812,8 +876,12 @@ public class CenterButtons extends JPanel implements ActionListener {
                     break;
                 }
             }
+            double start = Double.parseDouble(startTime);
+            double end = Double.parseDouble(endTime);
             String[] split = s.split("\r\n");
             List<String[]> findEnd = new ArrayList<>();
+            preList = new ArrayList<>();
+            aftList = new ArrayList<>();
             for (String line : split) {
                 if (line.length() == 38){
                     char[] chars = line.toCharArray();
@@ -843,17 +911,22 @@ public class CenterButtons extends JPanel implements ActionListener {
                         }
                     }
                     findEnd.add(new String[]{String.valueOf(first),String.valueOf(second),String.valueOf(third)});
+                    if (Objects.equals(exportType.getSelectedItem(),
+                            exportMap.get(5))){
+                        double currentTime =
+                                Double.parseDouble(String.valueOf(first));
+                        if (currentTime<=start){
+                            preList.add(new TimeAndCap(String.valueOf(second),
+                                    new DecimalFormat("##0.00").format((currentTime - 0) / 3.6 * dataType)));
+                        }else if (currentTime<=end){
+                            aftList.add(new TimeAndCap(String.valueOf(second),
+                                    new DecimalFormat("##0.00").format((currentTime - start) / 3.6 * dataType)));
+                        }
+                    }
                 }
             }
             String endE = findEnd.get(findEnd.size()-1)[1];
-            float a = Float.parseFloat(startTime.substring(0, 7));
-            int x = Integer.parseInt(startTime.substring(9, 11));
-            double start = Math.pow(10, x) * a;
-            float b = Float.parseFloat(endTime.substring(0, 7));
-            int y = Integer.parseInt(endTime.substring(9, 11));
-            double end = Math.pow(10, y) * b;
-            double res = (end - start) / 3.6 * dataType;
-            list.add(new DecimalFormat("##0.00").format(res));
+            list.add(new DecimalFormat("##0.00").format((end - start) / 3.6 * dataType));
             double endEV = Double.parseDouble(endE);
             float endMin = Float.parseFloat(eMin);
             if (Math.abs(endEV - endMin) > 0.02){
@@ -861,6 +934,7 @@ public class CenterButtons extends JPanel implements ActionListener {
             }
             clList.add(new DecimalFormat("##0.00").format((end - start) / start * 100));
         }
+
         if (overPotential && "".equals(setMin)){
             String dialog = JOptionPane.showInputDialog(dataType+"A/g的电流密度发生极化了，请手动输入你要生成的随机数");
             float parseFloat = Float.parseFloat(dialog);
@@ -876,6 +950,7 @@ public class CenterButtons extends JPanel implements ActionListener {
             list.add("可能发生极化");
             clList.add("可能发生极化");
         }
+
         while (list.size() <= 4) {
             list.add(new DecimalFormat("##0.00").format((Float.parseFloat(list.get(list.size()-1)) + (new Random().nextInt(50) - 25) / 100f)));
             clList.add(new DecimalFormat("##0.00").format((Float.parseFloat(clList.get(clList.size()-1)) + (new Random().nextInt(50) - 25) / 100f)));
